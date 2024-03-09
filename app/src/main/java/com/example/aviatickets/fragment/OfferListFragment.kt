@@ -1,27 +1,26 @@
 package com.example.aviatickets.fragment
 
 import android.os.Bundle
-import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
 import com.example.aviatickets.R
 import com.example.aviatickets.adapter.OfferListAdapter
 import com.example.aviatickets.databinding.FragmentOfferListBinding
 import com.example.aviatickets.model.entity.Offer
+import com.example.aviatickets.model.network.ApiClient
 import com.example.aviatickets.model.service.FakeService
-import retrofit2.Callback
-import retrofit2.Call
-import com.example.aviatickets.model.service.FakeService.offerList
-import retrofit2.Response
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 
 class OfferListFragment : Fragment() {
 
     companion object {
-        private const val TAG = "OfferListFragment"
         fun newInstance() = OfferListFragment()
     }
 
@@ -44,47 +43,62 @@ class OfferListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.offerList.adapter = adapter
-
         setupUI()
-        loadFlightOffers()
-    }
-
-    private fun loadFlightOffers() {
-        val call = ApiClient.apiService.getFlightOffers()
-
-        call.enqueue(object : Callback<List<Offer>> {
-            override fun onResponse(call: Call<List<Offer>>, response: Response<List<Offer>>) {
-                if (response.isSuccessful) {
-                    adapter.submitList(response.body())
-                } else {
-                    Log.e(TAG, "Failed to fetch flight offers: ${response.code()}")
-                    Toast.makeText(requireContext(), "Failed to fetch flight offers", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            override fun onFailure(call: Call<List<Offer>>, t: Throwable) {
-                Log.e(TAG, "Error fetching flight offers: ${t.message}")
-                Toast.makeText(requireContext(), "Error fetching flight offers", Toast.LENGTH_SHORT).show()
-            }
-        })
+        adapter.setItems(FakeService.offerList)
     }
 
     private fun setupUI() {
         with(binding) {
+            offerList.adapter = adapter
+
             sortRadioGroup.setOnCheckedChangeListener { _, checkedId ->
                 when (checkedId) {
                     R.id.sort_by_price -> {
-                        val sortedList = FakeService.offerList.sortedBy { it.price }
-                        adapter.submitList(sortedList)
+                        adapter.sortByPrice()
                     }
 
                     R.id.sort_by_duration -> {
-                        val sortedList = FakeService.offerList.sortedBy { it.flight.duration }
-                        adapter.submitList(sortedList)
+                        adapter.sortByDuration()
                     }
                 }
             }
+            fetchOfferList()
         }
+    }
+
+    private fun fetchOfferList() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = ApiClient.apiService.getOffers()
+                if (response.isSuccessful) {
+                    val offerResponse = response.body()
+                    val offerList = offerResponse?.offers ?: emptyList()
+                    updateOfferList(offerList)
+                } else {
+                    showError("Failed to fetch offers: ${response.errorBody()}")
+                }
+            } catch (e: HttpException) {
+                showError("HTTP error occurred: ${e.message()}")
+            } catch (e: Throwable) {
+                showError("An error occurred: ${e.message}")
+            }
+        }
+    }
+
+    private fun updateOfferList(offers: List<Offer>) {
+        requireActivity().runOnUiThread {
+            adapter.setItems(offers)
+        }
+    }
+
+    private fun showError(message: String) {
+        requireActivity().runOnUiThread {
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 }
