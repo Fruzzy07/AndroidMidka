@@ -55,7 +55,7 @@
             </LinearLayout>
 
             <ImageView
-                android:id="@+id/airline_image"
+                android:id="@+id/airlineLogoImageView"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:contentDescription="@null" />
